@@ -218,7 +218,7 @@ def adjust_timer(adjustment_seconds):
     if timer_state['start_time'] is not None:
         if timer_state['mode'] == 'Duration':
             # Adjust the effective start time backwards to increase remaining time
-            timer_state['start_time'] -= adjustment_seconds
+            timer_state['start_time'] += adjustment_seconds
 
         elif timer_state['mode'] == 'Absolute':
             # Adjust the target end time
@@ -254,4 +254,5 @@ def get_current_schedule():
         return {
             'schedule': timer_state['midweek_schedule'],
             'type': 'Midweek'
+
         }
