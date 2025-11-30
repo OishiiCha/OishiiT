@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timer Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1f2937 0%, #000000 100%);
+        }
+        .card {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.8s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        input[type="password"] {
+            letter-spacing: 0.25em;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div id="login-card" class="card bg-gray-800 p-8 rounded-xl w-full max-w-sm text-center text-white">
+        <h1 class="text-3xl font-extrabold mb-2 text-red-400">Secure Timer Access</h1>
+        <p class="text-gray-400 mb-6">Enter the 4-digit PIN to access the timer controls.</p>
+
+        <div id="message" class="hidden p-3 mb-4 rounded-lg text-sm font-medium"></div>
+
+        <input type="password" id="pin-input" maxlength="4" placeholder="••••"
+               class="w-full p-3 mb-6 bg-gray-700 border border-gray-600 rounded-lg text-2xl focus:outline-none focus:ring-2 focus:ring-red-500 transition duration-150"
+               onkeypress="if(event.key === 'Enter') loginUser()">
+
+        <button id="login-button" onclick="loginUser()"
+                class="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition duration-200 focus:outline-none focus:ring-4 focus:ring-red-500 focus:ring-opacity-50">
+            LOGIN
+        </button>
+
+        <p class="mt-8 text-xs text-gray-500">
+            * Use the PIN set in the server environment.
+        </p>
+    </div>
+
+    <script>
+        const PIN_STORAGE_KEY = 'timerAuthPin';
+        const API_LOGIN_ENDPOINT = '/api/login';
+        const CONTROL_PAGE_URL = '/control'; // --- UPDATED TO /control ---
+
+        function showMessage(text, bgColor, isSuccess = false) {
+            const messageEl = document.getElementById('message');
+            messageEl.className = `p-3 mb-4 rounded-lg text-sm font-medium ${bgColor} text-white`;
+            messageEl.textContent = text;
+            messageEl.classList.remove('hidden');
+
+            if (!isSuccess) {
+                setTimeout(clearMessage, 3000);
+            }
+        }
+
+        function clearMessage() {
+            const messageEl = document.getElementById('message');
+            messageEl.classList.add('hidden');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const pinInput = document.getElementById('pin-input');
+
+            // Check if user is already authenticated
+            const storedPin = localStorage.getItem(PIN_STORAGE_KEY);
+
+            if (storedPin) {
+                // If a token/pin is present, redirect immediately
+                showMessage('Authenticated! Redirecting...', 'bg-green-700', true);
+                setTimeout(() => {
+                    window.location.href = CONTROL_PAGE_URL;
+                }, 500);
+            } else {
+                 pinInput.focus();
+            }
+        });
+
+        async function loginUser() {
+            const pinInput = document.getElementById('pin-input');
+            const pin = pinInput.value;
+            const loginButton = document.getElementById('login-button');
+
+            if (pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+                showMessage('PIN must be 4 digits.', 'bg-yellow-600');
+                return;
+            }
+
+            loginButton.disabled = true;
+            loginButton.textContent = 'Verifying...';
+            clearMessage();
+
+            try {
+                const response = await fetch(API_LOGIN_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pin: pin })
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    // Success! Store the pin as a simple token indicator
+                    localStorage.setItem(PIN_STORAGE_KEY, pin);
+                    showMessage('Login successful! Redirecting...', 'bg-green-700', true);
+
+                    setTimeout(() => {
+                         window.location.href = CONTROL_PAGE_URL;
+                    }, 500);
+
+                } else {
+                    // Failure
+                    const errorMsg = result.error || 'Login failed.';
+                    showMessage(errorMsg, 'bg-red-600');
+                    localStorage.removeItem(PIN_STORAGE_KEY);
+                }
+            } catch (error) {
+                console.error('Login request failed:', error);
+                showMessage('Network error. Check server connection.', 'bg-red-600');
+            } finally {
+                loginButton.disabled = false;
+                loginButton.textContent = 'LOGIN';
+            }
+        }
+    </script>
+</body>
+</html>

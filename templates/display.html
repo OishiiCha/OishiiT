@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OishiiT Display</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Import the bold, proportional font for the overall look */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            /* Key for fitting: Hide any overflow */
+            overflow: hidden;
+            color: #fff;
+            /* Minimal horizontal padding to prevent content touching edges */
+            padding: 0 1vw;
+        }
+
+        /* Large Timer Display (Responsive) - Default size for RUNNING timer */
+        #timer-container {
+            /* Increased size for the active timer countdown */
+            font-size: 35vw;
+            line-height: 1;
+            font-weight: 900;
+            text-align: center;
+            transition: color 0.3s ease-in-out, font-size 0.3s ease-in-out;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            /* Ensure it doesn't exceed viewport width */
+            max-width: 100vw;
+        }
+
+        /* --- FIX: Adjust font size slightly when negative sign is present --- */
+        .negative-active {
+            /* Reduced further (from 31vw) to guarantee fit with the hyphen */
+            font-size: 29vw !important;
+        }
+
+        /* Styling for when the main display shows the CLOCK OF DAY (Timer is stopped) */
+        .mode-clock-main {
+            /* SMALLER size for the main clock of day */
+            font-size: 20vw !important;
+        }
+
+        /* Adjust font size for smaller screens or landscape */
+        @media (max-width: 768px) {
+            #timer-container {
+                /* Increased size for the active timer countdown (mobile) */
+                font-size: 55vw;
+            }
+            .mode-clock-main {
+                /* SMALLER size for the main clock of day (mobile) */
+                font-size: 35vw !important;
+            }
+            /* FIX: Mobile adjustment for negative state */
+            .negative-active {
+                /* Reduced further (from 49vw) to guarantee fit with the hyphen on mobile */
+                font-size: 46vw !important;
+            }
+        }
+
+        /* Time Segment Styling: Ensures minutes/seconds take up equal horizontal space */
+        .time-segment {
+             display: inline-block;
+             flex-grow: 1;
+             min-width: 0;
+        }
+
+        /* Alignment classes for the segments */
+        .align-right {
+            text-align: right;
+        }
+        .align-left {
+            text-align: left;
+        }
+
+        /* Apply monospace font only to the digits to prevent wobble */
+        .time-digits {
+            font-family: 'Fira Code', 'Roboto Mono', monospace;
+            font-weight: 900;
+        }
+
+        /* Colon Styling: A fixed, non-growing element in the center */
+        .time-colon {
+            margin: 0 0.1em;
+            text-align: center;
+        }
+
+        /* Timer Colors */
+        .color-STOPPED, .color-READY {
+            /* Changed from gray (#4b5563) to White */
+            color: #ffffff;
+        }
+        .color-GREEN {
+            color: #2ff924; /* Emerald Green */
+        }
+        .color-AMBER {
+            color: #f59e0b; /* Amber Yellow */
+        }
+        .color-RED {
+            color: #ef4444; /* Red */
+        }
+    </style>
+</head>
+<body>
+
+    <div id="timer-container" class="color-STOPPED">
+        --:--
+    </div>
+
+    <!-- The small clock element has been removed -->
+
+    <script>
+        const timerContainer = document.getElementById('timer-container');
+        let lastColor = 'STOPPED';
+
+        /**
+         * Formats the remaining time in milliseconds into a centered, wobble-free HTML structure.
+         */
+        function formatTime(ms) {
+            const isNegative = ms < 0;
+            let totalSeconds = Math.floor(Math.abs(ms) / 1000);
+
+            // 1. Extract all time parts (SS, MM, HH)
+            let parts = [];
+
+            // Seconds
+            parts.unshift(totalSeconds % 60);
+            totalSeconds = Math.floor(totalSeconds / 60);
+
+            // Minutes
+            parts.unshift(totalSeconds % 60);
+            totalSeconds = Math.floor(totalSeconds / 60);
+
+            // Hours (if needed)
+            if (totalSeconds > 0) {
+                parts.unshift(totalSeconds);
+            }
+
+            // Format all parts to two digits and wrap in monospace span
+            const formattedParts = parts.map(p => `<span class="time-digits">${p.toString().padStart(2, '0')}</span>`);
+
+            // 2. Identify the central segments (Minutes and Seconds)
+            const secondsSegment = formattedParts[formattedParts.length - 1];
+            const minutesSegment = formattedParts[formattedParts.length - 2];
+
+            // 3. Handle pre-minutes (Hours segment) if they exist
+            let preMinutes = '';
+            if (formattedParts.length > 2) { // Check if hours were included
+                // Join hours (and any previous minutes that were part of hours) with a colon
+                preMinutes = formattedParts.slice(0, formattedParts.length - 2).join(':') + ':';
+            }
+
+            // 4. Construct the centered HTML using flex segments for the MM:SS portion
+            let centerHtml = `
+                <span class="time-segment align-right">${minutesSegment}</span>
+                <span class="time-colon">:</span>
+                <span class="time-segment align-left">${secondsSegment}</span>
+            `;
+
+            // 5. Combine the negative sign, pre-minutes, and the centered block
+            return (isNegative ? '<span class="negative-sign" style="margin-right: 0.1em;">–</span>' : '') + preMinutes + centerHtml;
+        }
+
+        /**
+         * Converts a "HH:MM:SS" (24hr) time string to "H:MM:SS AM/PM".
+         * Now includes seconds.
+         * @param {string} timeString - The full time string (e.g., "14:30:05").
+         * @returns {string} - The formatted 12-hour time string (e.g., "2:30:05 PM").
+         */
+        function formatTimeOfDay12Hr(timeString) {
+            if (!timeString) return '--:--:--';
+            const parts = timeString.split(':');
+            // Ensure we have HH:MM:SS
+            if (parts.length < 3) return timeString;
+
+            let hour = parseInt(parts[0], 10);
+            const minute = parts[1];
+            const second = parts[2]; // Get seconds
+            let period = 'AM';
+
+            if (hour === 0) {
+                hour = 12; // Midnight is 12 AM
+            } else if (hour >= 12) {
+                period = 'PM';
+                if (hour > 12) {
+                    hour -= 12;
+                }
+            }
+
+            // Format: H:MM:SS AM/PM
+            return `${hour}:${minute}:${second} ${period}`;
+        }
+
+
+        async function updateDisplay() {
+            try {
+                const response = await fetch('/api/state');
+                const state = await response.json();
+
+                // --- NEW FIX: Apply/Remove class based on negative state ---
+                if (state.remaining_ms < 0 && state.allow_negative) {
+                    timerContainer.classList.add('negative-active');
+                } else {
+                    timerContainer.classList.remove('negative-active');
+                }
+                // ---------------------------------------------------------
+
+
+                // 2. Determine Timer Visibility
+                const isRunningOrReady = state.is_running || state.total_duration_ms > 0;
+
+                if (isRunningOrReady) {
+                    // --- TIMER IS ACTIVE (LARGER SIZE) ---
+
+                    // Remove the clock-mode class to use the large default font-size
+                    timerContainer.classList.remove('mode-clock-main');
+
+                    // B. Show Timer
+                    const formattedTime = formatTime(state.remaining_ms);
+                    timerContainer.innerHTML = formattedTime;
+
+                    // C. Update Color
+                    const newColor = state.color;
+                    if (newColor !== lastColor) {
+                        timerContainer.classList.remove(`color-${lastColor}`);
+                        timerContainer.classList.add(`color-${newColor}`);
+                        lastColor = newColor;
+                    }
+
+                } else {
+                    // --- TIMER IS STOPPED/RESET (SMALLER MAIN CLOCK) ---
+
+                    // Add the clock-mode class to use the smaller font-size
+                    timerContainer.classList.add('mode-clock-main');
+
+                    // B. Show Clock Time (HH:MM:SS AM/PM) as Main Display (wrapped in monospace span)
+                    const formattedClock = formatTimeOfDay12Hr(state.server_time_of_day);
+                    // Wrapping the entire 12-hour time string in the monospace class
+                    timerContainer.innerHTML = `<span class="time-digits">${formattedClock || '--:--:--'}</span>`;
+                    timerContainer.classList.remove(`color-${lastColor}`);
+                    timerContainer.classList.add('color-STOPPED');
+                    lastColor = 'STOPPED';
+                }
+
+            } catch (error) {
+                console.error("Failed to fetch timer state:", error);
+                // Optionally show a connection error on the display
+            }
+        }
+
+        // Poll the server every 500ms (half-second)
+        setInterval(updateDisplay, 500);
+        updateDisplay(); // Initial call
+    </script>
+</body>
+</html>
