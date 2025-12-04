@@ -1,6 +1,7 @@
 import time
 from datetime import datetime
 import pytz  # Need for handling absolute time (using UTC internally for safety)
+from config import INITIAL_STATE # Import the configuration data
 
 # Define UTC timezone for consistency
 TIMEZONE = pytz.utc
@@ -12,24 +13,9 @@ GREEN_THRESHOLD = 300000  # 5 minutes in milliseconds
 AMBER_THRESHOLD = 60000  # 1 minute in milliseconds
 
 # --- Timer State Management ---
-timer_state = {
-    'total_duration_ms': 0,
-    'start_time': None,  # Unix timestamp when timer started (None if stopped/loaded)
-    'target_end_time_ts': None,  # Unix timestamp for absolute time countdown
-    'allow_negative': True,  # <-- DEFAULTED TO TRUE
-    'mode': 'Duration',  # 'Duration' or 'Absolute'
-    'midweek_schedule': [
-        {"section": "Opening", "name": "Initial Remarks", "duration_seconds": 3 * 60},
-        {"section": "Section 1", "name": "Talk 1", "duration_seconds": 6 * 60},
-        {"section": "Section 2", "name": "Talk 2", "duration_seconds": 5 * 60},
-        {"section": "Concluding", "name": "Review", "duration_seconds": 2 * 60 + 30},
-    ],
-    'weekend_schedule': [
-        {"section": "Opening", "name": "Song & Prayer", "duration_seconds": 4 * 60},
-        {"section": "Main Talk", "name": "Public Discourse", "duration_seconds": 30 * 60},
-        {"section": "WTS", "name": "Study Article", "duration_seconds": 60 * 60},
-    ]
-}
+# Initialize the live timer state from the configuration file
+# Use .copy() so runtime changes do not modify the imported INITIAL_STATE dictionary
+timer_state = INITIAL_STATE.copy()
 
 
 # --- Core Calculation Functions ---

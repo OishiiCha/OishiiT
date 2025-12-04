@@ -27,8 +27,8 @@
 
         /* Large Timer Display (Responsive) - Default size for RUNNING timer */
         #timer-container {
-            /* Increased size for the active timer countdown */
-            font-size: 35vw;
+            /* REDUCED from 35vw to 33vw for better horizontal fit */
+            font-size: 33vw;
             line-height: 1;
             font-weight: 900;
             text-align: center;
@@ -45,8 +45,8 @@
 
         /* --- FIX: Adjust font size slightly when negative sign is present --- */
         .negative-active {
-            /* Reduced further (from 31vw) to guarantee fit with the hyphen */
-            font-size: 29vw !important;
+            /* Reduced further (from 29vw to 27vw) to guarantee fit with the hyphen */
+            font-size: 27vw !important;
         }
 
         /* Styling for when the main display shows the CLOCK OF DAY (Timer is stopped) */
@@ -58,8 +58,8 @@
         /* Adjust font size for smaller screens or landscape */
         @media (max-width: 768px) {
             #timer-container {
-                /* Increased size for the active timer countdown (mobile) */
-                font-size: 55vw;
+                /* REDUCED from 55vw to 53vw */
+                font-size: 53vw;
             }
             .mode-clock-main {
                 /* SMALLER size for the main clock of day (mobile) */
@@ -67,8 +67,8 @@
             }
             /* FIX: Mobile adjustment for negative state */
             .negative-active {
-                /* Reduced further (from 49vw) to guarantee fit with the hyphen on mobile */
-                font-size: 46vw !important;
+                /* Reduced from 46vw to 44vw */
+                font-size: 44vw !important;
             }
         }
 
@@ -120,8 +120,6 @@
     <div id="timer-container" class="color-STOPPED">
         --:--
     </div>
-
-    <!-- The small clock element has been removed -->
 
     <script>
         const timerContainer = document.getElementById('timer-container');

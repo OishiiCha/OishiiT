@@ -50,6 +50,11 @@
             padding-right: 2.5rem;
         }
 
+        /* Style the select input */
+        #absolute-time-select {
+            /* Inherits input-select-style */
+        }
+
         .time-display {
             font-size: 3.5rem; /* Slightly smaller for the card */
             line-height: 1;
@@ -64,13 +69,10 @@
 </head>
 <body class="p-4 sm:p-8 min-h-screen flex flex-col items-center justify-center">
 
-    <!-- NEW CONTAINER: Responsive Grid for Desktop/Tablet View -->
     <div id="control-grid" class="w-full max-w-6xl grid grid-cols-1 md:grid-cols-3 gap-6 transition-all duration-300">
 
-        <!-- COLUMN 1: Main Status and Primary Controls (Schedule/Manual Input) -->
         <div class="md:col-span-2 flex flex-col space-y-6">
 
-            <!-- 1. Current Status Display Card (Large) -->
             <div id="status-card" class="p-6 bg-gray-800 rounded-2xl shadow-2xl border-t-4 border-gray-500 transition-all duration-300">
                 <h1 class="text-3xl font-bold text-gray-100 mb-4">OishiiT Timer Status</h1>
 
@@ -93,16 +95,13 @@
                 </div>
             </div>
 
-            <!-- 2. Timer Control Group (Only Stop/Reset) -->
             <div class="p-4 bg-gray-800 rounded-2xl shadow-xl">
                 <h2 class="text-xl font-semibold text-gray-200 mb-4">Timer Control</h2>
-                <!-- Stop Button (Resets the timer) -->
                 <button id="stop-button" onclick="stopTimer()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition duration-150 text-xl">
                     STOP / RESET
                 </button>
             </div>
 
-            <!-- 3. Schedule Mode Card -->
             <div class="p-6 bg-gray-800 rounded-2xl shadow-xl">
                 <h2 class="text-xl font-semibold text-gray-200 mb-4">Schedule Mode ({{ schedule_type }} Parts)</h2>
                 <div class="flex flex-col sm:flex-row gap-4">
@@ -114,30 +113,24 @@
                             </option>
                         {% endfor %}
                     </select>
-                    <!-- Load Time button -->
                     <button onclick="loadSchedulePart()" class="bg-green-600 hover:bg-green-700 w-full sm:w-auto text-white font-bold py-3 px-5 rounded-xl shadow-md transition duration-150 whitespace-nowrap">Load Time</button>
                 </div>
             </div>
 
-            <!-- 4. Custom Duration Input Card -->
             <div class="p-6 bg-gray-800 rounded-2xl shadow-xl">
                 <h2 class="text-xl font-semibold text-gray-200 mb-4">Custom Duration (Minutes)</h2>
                 <div class="flex flex-col sm:flex-row gap-4">
                     <input type="number" id="custom-minutes" min="1" placeholder="Enter minutes" class="text-white w-full sm:flex-grow p-3 border border-gray-600 bg-gray-900 rounded-xl focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition duration-150" value="20">
-                    <!-- Load Time button -->
                     <button onclick="loadCustomDuration()" class="bg-pink-600 hover:bg-pink-700 w-full sm:w-auto text-white font-bold py-3 px-5 rounded-xl shadow-md transition duration-150 whitespace-nowrap">Load Time</button>
                 </div>
             </div>
         </div>
 
-        <!-- COLUMN 2: Secondary Controls (Quick Sets, Absolute Time, Adjustments) -->
         <div class="md:col-span-1 flex flex-col space-y-6">
 
-            <!-- 5. Quick Duration Set Card -->
             <div class="p-6 bg-gray-800 rounded-2xl shadow-xl">
                 <h2 class="text-xl font-semibold text-gray-200 mb-4">Quick Set Times (Minutes)</h2>
                 <div class="grid grid-cols-2 gap-4">
-                    <!-- Load Duration buttons -->
                     <button onclick="loadDuration(5)" class="time-button bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition duration-150">5 min</button>
                     <button onclick="loadDuration(10)" class="time-button bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition duration-150">10 min</button>
                     <button onclick="loadDuration(15)" class="time-button bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-md transition duration-150">15 min</button>
@@ -145,18 +138,18 @@
                 </div>
             </div>
 
-            <!-- 6. Absolute Time Countdown Card -->
             <div class="p-6 bg-gray-800 rounded-2xl shadow-xl">
                 <h2 class="text-xl font-semibold text-gray-200 mb-4">Countdown to Time (HH:MM)</h2>
                 <div class="flex flex-col gap-4">
-                    <input type="time" id="absolute-time-input" value="10:00"
+                    <select id="absolute-time-select"
                            class="input-select-style text-white w-full p-3 border border-gray-600 bg-gray-900 rounded-xl focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition duration-150">
-                    <!-- Load Target button -->
+                           <option value="" disabled selected>Select a future time (HH:MM)</option>
+                           </select>
+
                     <button onclick="loadAbsoluteTime()" class="bg-teal-600 hover:bg-teal-700 w-full text-white font-bold py-3 px-5 rounded-xl shadow-md transition duration-150 whitespace-nowrap">Load Target</button>
                 </div>
             </div>
 
-            <!-- 7. Live Adjustments Card (These apply immediately regardless of running state) -->
             <div class="p-6 bg-gray-800 rounded-2xl shadow-xl">
                 <h2 class="text-xl font-semibold text-gray-200 mb-4">Live Adjustments (Seconds)</h2>
                 <div class="grid grid-cols-2 gap-4">
@@ -168,7 +161,6 @@
             </div>
         </div>
 
-        <!-- Global Message and Footer -->
         <div class="md:col-span-3">
              <p id="message" class="text-sm text-center mt-6 h-5 text-red-400 transition-opacity duration-300 opacity-0"></p>
 
@@ -194,6 +186,13 @@
                 window.location.href = LOGIN_PAGE_URL;
                 return;
             }
+
+            // 💡 FIX 1: Initial call to populate the dropdown
+            generateFutureTimeOptions();
+
+            // 💡 FIX 2: Set a slower interval to refresh the time options (e.g., every 60 seconds)
+            // This prevents the user's selection from being constantly overwritten by the status poller.
+            setInterval(generateFutureTimeOptions, 60000);
         });
 
         const statusLabel = document.getElementById('status-label');
@@ -201,7 +200,7 @@
         const currentToD = document.getElementById('current-tod');
         const messageElement = document.getElementById('message');
         const negativeToggle = document.getElementById('negative-toggle');
-        // Removed reference to startPauseButton
+        const absoluteTimeSelect = document.getElementById('absolute-time-select');
         const statusCard = document.getElementById('status-card');
 
         // --- UTILITY FUNCTIONS ---
@@ -235,9 +234,51 @@
             return (isNegative ? '–' : '') + timeString;
         }
 
+        // 💡 MODIFIED FUNCTION: Generates time options and preserves selection
+        function generateFutureTimeOptions() {
+            // Store the currently selected value before regenerating
+            const selectedValue = absoluteTimeSelect.value;
+
+            const now = new Date();
+            const currentMinutes = now.getMinutes();
+            const minutesIncrement = 5; // Options spaced 5 minutes apart
+
+            // Calculate the next 5-minute interval after the current time
+            const startOffset = minutesIncrement - (currentMinutes % minutesIncrement);
+            let targetTime = new Date(now.getTime() + startOffset * 60000);
+
+            // Clear existing options
+            absoluteTimeSelect.innerHTML = '<option value="" disabled>Select a future time (HH:MM)</option>';
+
+            // Generate options for the next hour (12 steps of 5 minutes)
+            for (let i = 0; i < (60 / minutesIncrement); i++) {
+                const hour = targetTime.getHours().toString().padStart(2, '0');
+                const minute = targetTime.getMinutes().toString().padStart(2, '0');
+                const timeValue = `${hour}:${minute}`;
+
+                const option = document.createElement('option');
+                option.value = timeValue;
+                option.textContent = timeValue;
+
+                // 💡 FIX 3: Re-apply the selection if it still exists in the new list
+                if (timeValue === selectedValue) {
+                    option.selected = true;
+                }
+
+                absoluteTimeSelect.appendChild(option);
+
+                // Move to the next 5-minute interval
+                targetTime = new Date(targetTime.getTime() + minutesIncrement * 60000);
+            }
+
+            // If nothing was selected (or the previous selection expired), ensure the prompt is selected
+            if (absoluteTimeSelect.selectedIndex === -1) {
+                absoluteTimeSelect.options[0].selected = true;
+            }
+        }
+
 
         // --- TIMER CONTROL FUNCTIONS ---
-        // Removed async function startTimer()
 
         async function stopTimer() { // Resets timer and sets back to STOPPED
              const response = await fetch('/api/cancel', { method: 'POST' });
@@ -318,11 +359,10 @@
         }
 
         async function loadAbsoluteTime() {
-            const timeInput = document.getElementById('absolute-time-input');
-            const targetTime = timeInput.value;
+            const targetTime = absoluteTimeSelect.value;
 
             if (!targetTime || !/^\d{2}:\d{2}$/.test(targetTime)) {
-                showMessage('Please enter a valid target time (HH:MM).', true);
+                showMessage('Please select a valid target time (HH:MM) from the list.', true);
                 return;
             }
             // This function ONLY calls set_target_time
@@ -391,8 +431,6 @@
                 // 5. Apply Status updates
                 remainingTime.className = `time-display font-extrabold transition-colors duration-300 ${timeColorClass}`;
                 statusLabel.textContent = statusText;
-
-                // No start button updates needed here
 
                 statusCard.className = `p-6 bg-gray-800 rounded-2xl shadow-2xl transition-all duration-300 border-t-4 ${borderColor}`;
 
