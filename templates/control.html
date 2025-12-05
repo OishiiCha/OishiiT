@@ -66,6 +66,16 @@
             }
         }
 
+        /* Custom Colors for Schedule List (Similar to wol.jw.org categories) */
+        .color-tg { /* TREASURES FROM GOD’S WORD */
+            background-color: #3730a3; /* Indigo-800/900 deep blue */
+        }
+        .color-ayf { /* APPLY YOURSELF TO THE FIELD MINISTRY */
+            background-color: #065f46; /* Emerald/Teal-800 deep green */
+        }
+        .color-lac { /* LIVING AS CHRISTIANS */
+            background-color: #881337; /* Rose-900 deep red/maroon */
+        }
     </style>
 </head>
 <body class="p-4 sm:p-8 min-h-screen flex flex-col items-center justify-center">
@@ -98,6 +108,7 @@
 
             <div class="p-4 bg-gray-800 rounded-2xl shadow-xl">
                 <h2 class="text-xl font-semibold text-gray-200 mb-4">Timer Control</h2>
+
                 <button id="stop-button" onclick="stopTimer()" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-8 rounded-xl shadow-lg transition duration-150 text-xl">
                     STOP / RESET
                 </button>
@@ -105,7 +116,7 @@
 
             <div class="p-6 bg-gray-800 rounded-2xl shadow-xl">
                 <h2 class="text-xl font-semibold text-gray-200 mb-4">Schedule Mode ({{ schedule_type }} Parts)</h2>
-                <div class="flex flex-col sm:flex-row gap-4">
+                <div class="flex flex-col sm:flex-row gap-4 mb-4">
                     <select id="schedule-select" class="input-select-style text-white w-full sm:flex-grow p-3 border border-gray-600 bg-gray-900 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition duration-150">
                         <option value="0" disabled selected>Select a {{ schedule_type }} Part</option>
                         {% for item in schedule %}
@@ -116,6 +127,9 @@
                     </select>
                     <button onclick="loadSchedulePart()" class="bg-green-600 hover:bg-green-700 w-full sm:w-auto text-white font-bold py-3 px-5 rounded-xl shadow-md transition duration-150 whitespace-nowrap">Load Time</button>
                 </div>
+                <button onclick="updateSchedules()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-5 rounded-xl shadow-md transition duration-150 whitespace-nowrap">
+                    Update Schedules from WOL
+                </button>
             </div>
 
             <div class="p-6 bg-gray-800 rounded-2xl shadow-xl">
@@ -162,6 +176,33 @@
             </div>
         </div>
 
+        <div class="md:col-span-3 mt-6">
+            <div id="schedule-list-section" class="p-6 bg-gray-800 rounded-2xl shadow-xl">
+                <div class="flex justify-between items-center cursor-pointer" onclick="toggleScheduleList()">
+                    <h2 class="text-xl font-semibold text-gray-200">Full {{ schedule_type }} Schedule List</h2>
+                    <svg id="list-arrow" class="w-5 h-5 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </div>
+
+                <div id="schedule-list-content" class="hidden mt-4 space-y-2">
+                    {% for item in schedule %}
+                        {% set color_class = 'bg-gray-700' %}
+                        {% if 'TREASURES' in item.section %}
+                            {% set color_class = 'color-tg' %}
+                        {% elif 'FIELD MINISTRY' in item.section %}
+                            {% set color_class = 'color-ayf' %}
+                        {% elif 'LIVING AS CHRISTIANS' in item.section %}
+                            {% set color_class = 'color-lac' %}
+                        {% endif %}
+                        <div class="p-3 rounded-lg shadow-sm {{ color_class }} flex justify-between items-center text-gray-100">
+                            <span class="font-medium">{{ item.name }}</span>
+                            <span class="font-mono text-sm opacity-75 whitespace-nowrap">{{ (item.duration_seconds / 60) | int }} min</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
         <div class="md:col-span-3">
              <p id="message" class="text-sm text-center mt-6 h-5 text-red-400 transition-opacity duration-300 opacity-0"></p>
 
@@ -176,26 +217,11 @@
     </div>
 
     <script>
+        // FIX: Standardize PIN_STORAGE_KEY to fix the login loop issue
         const PIN_STORAGE_KEY = 'timerAuthPin';
         const LOGIN_PAGE_URL = '/login';
 
-        // --- AUTH CHECK ---
-        document.addEventListener('DOMContentLoaded', () => {
-            const storedPin = localStorage.getItem(PIN_STORAGE_KEY);
-            // If the PIN/token is missing, redirect to the login page
-            if (!storedPin) {
-                window.location.href = LOGIN_PAGE_URL;
-                return;
-            }
-
-            // 💡 FIX 1: Initial call to populate the dropdown
-            generateFutureTimeOptions();
-
-            // 💡 FIX 2: Set a slower interval to refresh the time options (e.g., every 60 seconds)
-            // This prevents the user's selection from being constantly overwritten by the status poller.
-            setInterval(generateFutureTimeOptions, 60000);
-        });
-
+        // --- DOM Elements ---
         const statusLabel = document.getElementById('status-label');
         const remainingTime = document.getElementById('remaining-time');
         const currentToD = document.getElementById('current-tod');
@@ -203,6 +229,23 @@
         const negativeToggle = document.getElementById('negative-toggle');
         const absoluteTimeSelect = document.getElementById('absolute-time-select');
         const statusCard = document.getElementById('status-card');
+
+        // New DOM references for schedule list expansion
+        const scheduleListContent = document.getElementById('schedule-list-content');
+        const listArrow = document.getElementById('list-arrow');
+
+
+        // --- AUTH CHECK ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const storedPin = localStorage.getItem(PIN_STORAGE_KEY);
+            if (!storedPin) {
+                window.location.href = LOGIN_PAGE_URL;
+                return;
+            }
+
+            generateFutureTimeOptions();
+            setInterval(generateFutureTimeOptions, 60000);
+        });
 
         // --- UTILITY FUNCTIONS ---
         function logout() {
@@ -235,24 +278,18 @@
             return (isNegative ? '–' : '') + timeString;
         }
 
-        // 💡 MODIFIED FUNCTION: Generates time options and preserves selection
         function generateFutureTimeOptions() {
-            // Store the currently selected value before regenerating
             const selectedValue = absoluteTimeSelect.value;
-
             const now = new Date();
             const currentMinutes = now.getMinutes();
-            const minutesIncrement = 5; // Options spaced 5 minutes apart
+            const minutesIncrement = 5;
 
-            // Calculate the next 5-minute interval after the current time
             const startOffset = minutesIncrement - (currentMinutes % minutesIncrement);
             let targetTime = new Date(now.getTime() + startOffset * 60000);
 
-            // Clear existing options
-            absoluteTimeSelect.innerHTML = '<option value="" disabled>Select a future time (HH:MM)</option>';
+            absoluteTimeSelect.innerHTML = '<option value="" disabled selected>Select a future time (HH:MM)</option>';
 
-            // Generate options for the next hour (12 steps of 5 minutes)
-            for (let i = 0; i < (60 / minutesIncrement); i++) {
+            for (let i = 0; i < (60 / minutesIncrement) * 2; i++) {
                 const hour = targetTime.getHours().toString().padStart(2, '0');
                 const minute = targetTime.getMinutes().toString().padStart(2, '0');
                 const timeValue = `${hour}:${minute}`;
@@ -261,35 +298,58 @@
                 option.value = timeValue;
                 option.textContent = timeValue;
 
-                // 💡 FIX 3: Re-apply the selection if it still exists in the new list
                 if (timeValue === selectedValue) {
                     option.selected = true;
                 }
 
                 absoluteTimeSelect.appendChild(option);
 
-                // Move to the next 5-minute interval
                 targetTime = new Date(targetTime.getTime() + minutesIncrement * 60000);
             }
+        }
 
-            // If nothing was selected (or the previous selection expired), ensure the prompt is selected
-            if (absoluteTimeSelect.selectedIndex === -1) {
-                absoluteTimeSelect.options[0].selected = true;
+
+        // --- SCHEDULE LIST EXPANSION FUNCTION ---
+        function toggleScheduleList() {
+            scheduleListContent.classList.toggle('hidden');
+            // Toggle rotation: starts at rotate-0 (down/closed), toggles to rotate-180 (up/open)
+            listArrow.classList.toggle('rotate-180');
+        }
+
+        // --- NEW: SCHEDULE UPDATE FUNCTION ---
+        async function updateSchedules() {
+            showMessage("Updating schedules, please wait (this may take 10-30 seconds)...", false);
+            try {
+                // This assumes a new API endpoint /api/update_schedules has been created on the server
+                const response = await fetch('/api/update_schedules', { method: 'POST' });
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(`Schedule update complete: ${result.message || 'Schedules updated successfully.'}`, false);
+                    // Reload the page after a short delay so the dropdown uses the new schedule data
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    showMessage(`Error updating schedules: ${result.error}`, true);
+                }
+            } catch (error) {
+                console.error("Schedule update failed:", error);
+                showMessage('Network error. Check server connection and logs.', true);
             }
         }
 
 
         // --- TIMER CONTROL FUNCTIONS ---
 
-        async function stopTimer() { // Resets timer and sets back to STOPPED
+        async function stopTimer() {
+             // Calling cancel resets timer. If it was frozen, it just clears the freeze.
+             // If it was running, it freezes.
              const response = await fetch('/api/cancel', { method: 'POST' });
              const result = await response.json();
-             if (response.ok) { showMessage("Timer stopped and reset.", false); }
+             if (response.ok) { showMessage("Timer stopped / reset.", false); }
              else { showMessage(`Error stopping: ${result.error}`, true); }
         }
 
         async function adjustTimer(seconds) {
-            // Live adjustment - applies immediately
             const response = await fetch('/api/adjust_time', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -313,10 +373,9 @@
         }
 
 
-        // --- TIMER LOADING FUNCTIONS (Set without starting - relies on server behavior) ---
+        // --- TIMER LOADING FUNCTIONS (These automatically clear freeze in core.py) ---
         async function loadDuration(minutes) {
             const seconds = minutes * 60;
-            // This function ONLY calls set_duration
             const response = await fetch('/api/set_duration', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -347,7 +406,6 @@
                  showMessage('Please select a valid schedule part.', true);
                  return;
             }
-            // This function ONLY calls set_duration
             const response = await fetch('/api/set_duration', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -366,7 +424,6 @@
                 showMessage('Please select a valid target time (HH:MM) from the list.', true);
                 return;
             }
-            // This function ONLY calls set_target_time
             const response = await fetch('/api/set_target_time', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -400,8 +457,14 @@
                 let timeColorClass = 'text-gray-100';
                 let borderColor = 'border-gray-500';
 
+                // Handle the frozen state
+                if (state.is_frozen) {
+                    // FROZEN STATE
+                    statusText = `STATUS: FROZEN DISPLAY (Final Time)`;
+                    timeColorClass = 'text-red-500';
+                    borderColor = 'border-red-500';
 
-                if (state.is_running) {
+                } else if (state.is_running) {
                     // RUNNING STATE
                     statusText = `STATUS: ${state.color} (${state.mode} Mode)`;
                     timeColorClass = (
@@ -425,7 +488,6 @@
 
                 } else {
                     // STOPPED STATE (0:00:00 and not running)
-                    // statusText is already 'STATUS: STOPPED'
                     borderColor = 'border-gray-500';
                 }
 

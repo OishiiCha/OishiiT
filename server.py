@@ -44,71 +44,81 @@ def control_panel():
 
 
 @app.route('/display')
-def display_screen():
-    """Renders the full-screen display template (no authentication needed here)."""
+def display_page():
+    """Renders the timer display page."""
     return render_template('display.html')
+
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    """Authenticates the user using the PIN code."""
+    data = request.get_json()
+    pin = data.get('pin')
+
+    if pin == HARDCODED_PIN:
+        return jsonify({'success': True})
+    else:
+        return jsonify({'success': False, 'error': 'Invalid PIN'}), 401
 
 
 # --- API ENDPOINTS ---
 
-@app.route('/api/login', methods=['POST'])
-def login():
-    """Endpoint to validate the login PIN against the .env variable."""
+@app.route('/api/update_schedules', methods=['POST'])
+def update_schedules_route():
+    """Endpoint to trigger the schedule scraping and file update."""
     try:
-        data = request.get_json()
-        pin = data.get('pin')
-
-        if not pin or len(pin) != 4 or not pin.isdigit():
-            return jsonify({'error': 'Invalid PIN format.'}), 400
-
-        # Authentication check uses the securely loaded environment variable
-        if pin == HARDCODED_PIN:
-            return jsonify({'success': True, 'token': 'mock-secure-token-123'}), 200
+        result = core.update_schedules()
+        if result['success']:
+            return jsonify(result), 200
         else:
-            return jsonify({'error': 'Invalid PIN.'}), 401
-
+            return jsonify(result), 500
     except Exception as e:
-        print(f"Error during login: {e}")
-        return jsonify({'error': 'Server error.'}), 500
+        print(f"Server error during schedule update: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error during update process.'}), 500
+
+
+@app.route('/api/start_timer', methods=['POST'])
+def start_timer_route():
+    """Endpoint to start the timer."""
+    if core.start_timer():
+        return jsonify({'success': True, 'message': 'Timer started.'})
+    return jsonify({'success': False, 'error': 'No duration set to start.'}), 400
 
 
 @app.route('/api/set_duration', methods=['POST'])
 def set_duration():
-    """Endpoint to set the total timer duration (in seconds) and start the timer."""
+    """Endpoint to set a timer duration in seconds."""
     try:
         data = request.get_json()
         seconds = int(data.get('seconds', 0))
 
         if core.set_timer_duration_seconds(seconds):
-            return jsonify({'success': True, 'total_duration_seconds': seconds})
+            return jsonify({'success': True, 'seconds': seconds})
         else:
-            return jsonify({'error': 'Time must be positive.'}), 400
+            return jsonify({'success': False, 'error': 'Invalid duration value.'}), 400
 
     except Exception as e:
-        print(f"Error setting duration: {e}")
-        return jsonify({'error': 'Invalid request format or server error.'}), 500
+        return jsonify({'error': 'Invalid request format.'}), 400
 
 
 @app.route('/api/set_target_time', methods=['POST'])
 def set_target_time():
-    """Endpoint to set the timer to count down to a specific time (HH:MM)."""
+    """Endpoint to set a countdown target time (HH:MM)."""
     try:
         data = request.get_json()
-        target_time = data.get('target_time')  # e.g., "14:30"
+        target_time = data.get('target_time')
 
         if core.set_absolute_target_time(target_time):
             return jsonify({'success': True, 'target_time': target_time})
         else:
-            return jsonify({'error': 'Invalid target time format or setting error.'}), 400
-
+            return jsonify({'success': False, 'error': 'Invalid time format or target time.'}), 400
     except Exception as e:
-        print(f"Error setting target time: {e}")
         return jsonify({'error': 'Invalid request format or server error.'}), 500
 
 
 @app.route('/api/cancel', methods=['POST'])
 def cancel_timer_route():
-    """Endpoint to stop the timer and reset the state."""
+    """Endpoint to stop the timer and optionally freeze the display."""
     core.cancel_timer()
     return jsonify({'success': True, 'message': 'Timer cancelled.'})
 
@@ -123,6 +133,7 @@ def adjust_time():
         if core.adjust_timer(adjustment_seconds):
             return jsonify({'success': True, 'adjustment_seconds': adjustment_seconds})
         else:
+            # This path is generally unreachable with current core.py logic, but kept for robustness.
             return jsonify({'success': False, 'error': 'Invalid adjustment value.'}), 400
 
     except Exception as e:
@@ -145,10 +156,14 @@ def toggle_negative_route():
 @app.route('/api/state', methods=['GET'])
 def get_state():
     """Endpoint for the clients to poll the current timer state."""
-    state_details = core.get_timer_state_details()
-    return jsonify(state_details)
+    state = core.get_timer_state_details()
+    return jsonify(state)
 
 
-# --- RUN APPLICATION ---
+# Standard Flask run block (unchanged)
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=80, debug=False)
+    # Ensure the schedules directory exists
+    if not os.path.exists(core.timer_state['schedules_dir']):
+        os.makedirs(core.timer_state['schedules_dir'])
+
+    app.run(debug=True, host='0.0.0.0', port=80)

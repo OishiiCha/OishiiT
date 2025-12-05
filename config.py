@@ -11,30 +11,12 @@ DEFAULT_TIMER_STATE = {
 }
 
 # --- MEETING SCHEDULES ---
-# Schedules based on the user's existing setup and the new detailed times (Jan 2020 C# comments)
+# Schedules based on the user's existing setup. The midweek_schedule will be
+# loaded dynamically from a JSON file.
 MEETING_SCHEDULES = {
-    # Detailed Midweek schedule based on the extracted C# comments (durations in seconds)
-    'midweek_schedule': [
-        # Opening
-        {"section": "Opening", "name": "Song, Prayer & Remarks", "duration_seconds": 5 * 60},  # 5 min
+    # Midweek schedule is now loaded dynamically from JSON
+    'midweek_schedule': [],
 
-        # Treasures from God's Word
-        {"section": "Treasures", "name": "Treasures Talk", "duration_seconds": 10 * 60},  # 10 min
-        {"section": "Treasures", "name": "Digging for Gems", "duration_seconds": 8 * 60},  # 8 min
-        {"section": "Treasures", "name": "Bible Reading", "duration_seconds": 4 * 60},  # 4 min
-
-        # Apply Yourself to the Field Ministry
-        {"section": "Ministry", "name": "Initial Call", "duration_seconds": 2 * 60},  # 2 min
-        {"section": "Ministry", "name": "Return Visit", "duration_seconds": 4 * 60},  # 4 min
-        {"section": "Ministry", "name": "Bible Study/Talk", "duration_seconds": 6 * 60},  # 6 min
-
-        # Living as Christians
-        {"section": "Living", "name": "Living Part 1", "duration_seconds": 15 * 60},  # 15 min
-        {"section": "Living", "name": "Congregation Bible Study", "duration_seconds": 30 * 60},  # 30 min
-
-        # Concluding
-        {"section": "Concluding", "name": "Concluding Comments", "duration_seconds": 3 * 60},  # 3 min
-    ],
     # Weekend schedule from the original core.py
     'weekend_schedule': [
         {"section": "Opening", "name": "Song & Prayer", "duration_seconds": 4 * 60},
@@ -43,9 +25,14 @@ MEETING_SCHEDULES = {
     ]
 }
 
+# --- SCHEDULE FILE CONFIGURATION ---
+# Match the directory constant from schedule.py
+SCHEDULES_DIR = "schedules"
+
 # --- COMBINED INITIAL STATE ---
 # The full dictionary used to initialize the timer's state in core.py
 INITIAL_STATE = {
     **DEFAULT_TIMER_STATE,
-    **MEETING_SCHEDULES
+    **MEETING_SCHEDULES,
+    'schedules_dir': SCHEDULES_DIR  # Include the directory path in the initial state
 }

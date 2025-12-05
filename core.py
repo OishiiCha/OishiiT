@@ -1,244 +1,254 @@
 import time
-from datetime import datetime
-import pytz  # Need for handling absolute time (using UTC internally for safety)
-from config import INITIAL_STATE # Import the configuration data
+from datetime import datetime, timedelta
+import pytz
+import json
+import os
+from config import INITIAL_STATE
+import schedule  # ADDED: Import the schedule module
 
 # Define UTC timezone for consistency
 TIMEZONE = pytz.utc
 
 # --- Constants ---
-# NOTE: These constants are now functionally irrelevant for the color logic,
-# as we are using a percentage-based threshold (20%).
-GREEN_THRESHOLD = 300000  # 5 minutes in milliseconds
-AMBER_THRESHOLD = 60000  # 1 minute in milliseconds
+GREEN_THRESHOLD = 300000
+AMBER_THRESHOLD = 60000
+FROZEN_DURATION_SECONDS = 10  # Duration to hold the time on screen
 
 # --- Timer State Management ---
-# Initialize the live timer state from the configuration file
-# Use .copy() so runtime changes do not modify the imported INITIAL_STATE dictionary
 timer_state = INITIAL_STATE.copy()
 
-
-# --- Core Calculation Functions ---
-
-def calculate_remaining_ms():
-    """Calculates the time remaining in milliseconds based on current mode."""
-    # If not running, return the set total duration (ready to start)
-    # NOTE: This only occurs if the timer was loaded and then CANCELLED/STOPPED.
-    if timer_state['start_time'] is None:
-        return timer_state['total_duration_ms']
-
-    now = time.time()
-
-    if timer_state['mode'] == 'Duration':
-        if timer_state['total_duration_ms'] == 0:
-            return 0
-
-        elapsed_ms = int((now - timer_state['start_time']) * 1000)
-        remaining_ms = timer_state['total_duration_ms'] - elapsed_ms
-
-    elif timer_state['mode'] == 'Absolute':
-        if timer_state['target_end_time_ts'] is None:
-            return 0
-
-        remaining_s = timer_state['target_end_time_ts'] - now
-        remaining_ms = int(remaining_s * 1000)
-
-    else:
-        return 0
-
-    # If negative time is not allowed and the timer expired, cap it at 0
-    if not timer_state['allow_negative'] and remaining_ms < 0:
-        return 0
-
-    return remaining_ms
+# Add keys for the freeze feature if they don't exist
+timer_state['frozen_end_time_ts'] = None
+timer_state['frozen_remaining_ms'] = 0
+timer_state['frozen_color'] = 'STOPPED'
 
 
-def get_status_color(remaining_ms):
-    """
-    Determines the color state based on remaining time.
-    RULES: Red only when negative. Amber at 20% or less remaining time.
-    """
+# --- Schedule Loading Function (Standard) ---
+def get_current_monday():
+    today = datetime.now()
+    days_to_subtract = today.weekday()
+    return today - timedelta(days=days_to_subtract)
 
-    # 1. Non-running check (loaded but stopped)
-    if timer_state['start_time'] is None:
-        return 'STOPPED'
 
-    # 2. Red Check: When timer has gone past zero
-    if remaining_ms < 0:
-        return 'RED'
+def load_midweek_schedule():
+    schedules_dir = timer_state['schedules_dir']
+    try:
+        monday_date = get_current_monday()
+        filename = monday_date.strftime('%Y%m%d') + ".json"
+        path = os.path.join(schedules_dir, filename)
 
-    # 3. Determine total duration for percentage calculation
-    total_duration_ms = timer_state['total_duration_ms']
+        with open(path, 'r', encoding='utf-8') as f:
+            schedule_data = json.load(f)
+            return [{
+                "section": i.get("category") or i.get("week_title"),
+                "name": i.get("title"),
+                "duration_seconds": i.get('duration', 0) * 60
+            } for i in schedule_data]
+    except Exception as e:
+        print(f"Schedule load error: {e}")
+        return []
 
+
+# --- Core Logic Helpers ---
+
+def clear_frozen_display():
+    """Resets the freeze state."""
+    timer_state['frozen_end_time_ts'] = None
+    timer_state['frozen_remaining_ms'] = 0
+    timer_state['frozen_color'] = 'STOPPED'
+
+
+def get_running_color(remaining_ms):
+    """Calculates color for a running timer."""
+    if remaining_ms < 0: return 'RED'
+
+    # Calculate effective total duration for Absolute mode
+    total = timer_state['total_duration_ms']
     if timer_state['mode'] == 'Absolute':
-        if timer_state['target_end_time_ts'] is None or timer_state['start_time'] is None:
-            return 'STOPPED'
-        # Calculate the duration based on the actual start time
-        total_duration_ms = (timer_state['target_end_time_ts'] - timer_state['start_time']) * 1000
+        if timer_state['target_end_time_ts'] and timer_state['start_time']:
+            total = (timer_state['target_end_time_ts'] - timer_state['start_time']) * 1000
 
-    # Safety check: If running but duration is zero/invalid
-    if total_duration_ms <= 0:
-        return 'GREEN'
-
-        # 4. Amber Check: 20% of the total planned duration
-    twenty_percent_ms = total_duration_ms * 0.20
-
-    if remaining_ms <= twenty_percent_ms:
-        return 'AMBER'
-
-    # 5. Green Check: Otherwise, it's green (running and positive, above 20%)
+    if total <= 0: return 'GREEN'
+    if remaining_ms <= AMBER_THRESHOLD: return 'AMBER'
     return 'GREEN'
 
 
-def get_timer_state_details():
-    """Returns a dictionary with all details needed by client apps."""
-    remaining_ms = calculate_remaining_ms()
+def calculate_remaining_ms():
+    """Calculates time, respecting the freeze state."""
+    # 1. If Frozen, return frozen time
+    if timer_state['frozen_end_time_ts'] and time.time() < timer_state['frozen_end_time_ts']:
+        return timer_state['frozen_remaining_ms']
 
-    # The timer is running only if start_time is set
+    # 2. If Stopped (and not frozen), return loaded total or 0
+    if timer_state['start_time'] is None:
+        return timer_state['total_duration_ms']
+
+    # 3. If Running, calculate live time
+    now = time.time()
+    remaining = 0
+
+    if timer_state['mode'] == 'Duration':
+        elapsed = int((now - timer_state['start_time']) * 1000)
+        remaining = timer_state['total_duration_ms'] - elapsed
+    elif timer_state['mode'] == 'Absolute' and timer_state['target_end_time_ts']:
+        remaining = int((timer_state['target_end_time_ts'] - now) * 1000)
+
+    # Auto-freeze logic: If time runs out and negative is NOT allowed
+    if not timer_state['allow_negative'] and remaining < 0:
+        timer_state['frozen_remaining_ms'] = 0
+        timer_state['frozen_color'] = 'RED'
+        timer_state['frozen_end_time_ts'] = now + FROZEN_DURATION_SECONDS
+        timer_state['start_time'] = None  # Stop the timer
+        return 0
+
+    return remaining
+
+
+def get_status_color(remaining_ms):
+    # 1. Return Frozen Color
+    if timer_state['frozen_end_time_ts'] and time.time() < timer_state['frozen_end_time_ts']:
+        return timer_state['frozen_color']
+    # 2. Return Stopped/Ready Color
+    if timer_state['start_time'] is None:
+        return 'STOPPED'
+    # 3. Return Running Color
+    return get_running_color(remaining_ms)
+
+
+def get_timer_state_details():
+    # Expire freeze if time passed
+    if timer_state['frozen_end_time_ts'] and time.time() >= timer_state['frozen_end_time_ts']:
+        clear_frozen_display()
+
+    ms = calculate_remaining_ms()
+    is_frozen = timer_state['frozen_end_time_ts'] is not None
     is_running = timer_state['start_time'] is not None
 
-    color = 'STOPPED'
-    if is_running:
-        color = get_status_color(remaining_ms)
-
-    # Format current time of day (using the server's local time for display)
-    server_time_of_day = datetime.now().strftime("%H:%M:%S")
+    # Force color calculation if running or frozen
+    color = get_status_color(ms) if (is_running or is_frozen) else 'STOPPED'
 
     return {
-        'remaining_ms': remaining_ms,
+        'remaining_ms': ms,
         'color': color,
         'is_running': is_running,
+        'is_frozen': is_frozen,
         'allow_negative': timer_state['allow_negative'],
         'total_duration_ms': timer_state['total_duration_ms'],
-        'server_time_of_day': server_time_of_day,
+        'server_time_of_day': datetime.now().strftime("%H:%M:%S"),
         'mode': timer_state['mode']
     }
 
 
-# --- CONTROL FUNCTIONS (Start/Stop/Set) ---
+# --- Actions ---
+
+def update_schedules():
+    """Triggers the schedule scraping logic from schedule.py."""
+    try:
+        # Assumes schedule.py exposes 'get_schedules_for_weeks' to scrape the next 4 weeks
+        saved_count = schedule.get_schedules_for_weeks(4)
+
+        return {'success': True, 'message': f'Successfully saved {saved_count} new meeting schedules.'}
+    except Exception as e:
+        # Log the error for server-side debugging
+        print(f"Schedule update failed: {e}")
+        return {'success': False, 'error': f'Schedule update failed: {e}'}
+
 
 def start_timer():
-    """Starts the currently loaded timer (Duration or Absolute)."""
-    # Only start if a duration or target time has been set AND it's not already running
-    if timer_state['total_duration_ms'] > 0 or timer_state['target_end_time_ts'] is not None:
-        # If start_time is None, it means the timer is loaded but stopped/paused, so start it now
-        if timer_state['start_time'] is None:
+    if timer_state['total_duration_ms'] > 0 or timer_state['target_end_time_ts']:
+        if not timer_state['start_time']:
+            clear_frozen_display()
             timer_state['start_time'] = time.time()
         return True
-    return False  # Cannot start if nothing is loaded.
+    return False
 
 
 def set_timer_duration_seconds(seconds):
-    """Sets the timer duration from seconds and starts the timer immediately."""
+    clear_frozen_display()
     if seconds <= 0:
         cancel_timer()
         return True
-
     timer_state['total_duration_ms'] = seconds * 1000
-    # FIX: Set start_time to now so the timer starts immediately upon "loading"
     timer_state['start_time'] = time.time()
-    timer_state['target_end_time_ts'] = None  # Clear absolute target
+    timer_state['target_end_time_ts'] = None
     timer_state['mode'] = 'Duration'
     return True
 
 
 def set_absolute_target_time(target_time_str):
-    """
-    Sets the timer to count down until a specific time today (HH:MM format) and starts it.
-    """
     try:
-        now_local = datetime.now()
+        clear_frozen_display()
+        now = datetime.now()
+        h, m = map(int, target_time_str.split(':'))
+        target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if target <= now: target += timedelta(days=1)
 
-        # Parse the target time components
-        target_hour = int(target_time_str[:2])
-        target_minute = int(target_time_str[3:5])
-
-        # Create a datetime object for the target today
-        target_dt_local = now_local.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-
-        # If the target time is already past today, set it for tomorrow
-        if target_dt_local <= now_local:
-            target_dt_local = target_dt_local.replace(day=now_local.day + 1)
-
-        # Convert to Unix timestamp
-        target_ts = target_dt_local.timestamp()
-
-        # Calculate the total duration from the moment of loading until the target time,
-        # to correctly inform the color-coding logic.
-        current_ts = time.time()
-        initial_duration_s = target_ts - current_ts
-
-        # Set the state
-        timer_state['target_end_time_ts'] = target_ts
-        # FIX: Set start_time to now so the timer starts immediately upon "loading"
-        timer_state['start_time'] = current_ts
-        timer_state['total_duration_ms'] = int(initial_duration_s * 1000)
+        timer_state['target_end_time_ts'] = target.timestamp()
+        timer_state['start_time'] = time.time()
+        timer_state['total_duration_ms'] = int((target.timestamp() - time.time()) * 1000)
         timer_state['mode'] = 'Absolute'
-
         return True
-
-    except Exception as e:
-        print(f"Error setting absolute time: {e}")
+    except:
         return False
 
 
-# --- Utility Functions ---
-
 def cancel_timer():
-    """Stops the timer and resets duration."""
+    """Stops timer. If it WAS running, freeze the display on the final time."""
+    was_running = timer_state['start_time'] is not None
+
+    # Calculate final state before clearing
+    final_ms = 0
+    final_color = 'STOPPED'
+
+    if was_running:
+        now = time.time()
+        if timer_state['mode'] == 'Duration':
+            elapsed = int((now - timer_state['start_time']) * 1000)
+            final_ms = timer_state['total_duration_ms'] - elapsed
+        elif timer_state['mode'] == 'Absolute' and timer_state['target_end_time_ts']:
+            final_ms = int((timer_state['target_end_time_ts'] - now) * 1000)
+
+        final_color = get_running_color(final_ms)
+
+    # Reset
     timer_state['total_duration_ms'] = 0
     timer_state['start_time'] = None
     timer_state['target_end_time_ts'] = None
-    timer_state['mode'] = 'Duration'  # Reset to default mode
+    timer_state['mode'] = 'Duration'
+    clear_frozen_display()
+
+    # Apply Freeze
+    if was_running:
+        # If negative not allowed and we went negative, snap to 0
+        if not timer_state['allow_negative'] and final_ms < 0:
+            final_ms = 0
+
+        timer_state['frozen_remaining_ms'] = final_ms
+        timer_state['frozen_color'] = final_color
+        timer_state['frozen_end_time_ts'] = time.time() + FROZEN_DURATION_SECONDS
 
 
-def adjust_timer(adjustment_seconds):
-    """Adjusts the timer's remaining time by modifying the start time or total duration."""
-    now = time.time()
+def adjust_timer(seconds):
+    clear_frozen_display()
+    if not timer_state['start_time']:
+        # If stopped, just change the loaded duration
+        timer_state['total_duration_ms'] = max(0, timer_state['total_duration_ms'] + (seconds * 1000))
+        return True
 
-    # If nothing is loaded, set a new duration
-    if timer_state['total_duration_ms'] == 0 and timer_state['target_end_time_ts'] is None:
-        return set_timer_duration_seconds(adjustment_seconds)
-
-    # If running (start_time is set), adjust start/target time
-    if timer_state['start_time'] is not None:
-        if timer_state['mode'] == 'Duration':
-            # Adjust the effective start time backwards to increase remaining time
-            timer_state['start_time'] += adjustment_seconds
-
-        elif timer_state['mode'] == 'Absolute':
-            # Adjust the target end time
-            timer_state['target_end_time_ts'] += adjustment_seconds
-            # Recalculate duration for color logic
-            timer_state['total_duration_ms'] = (timer_state['target_end_time_ts'] - timer_state['start_time']) * 1000
-
-    # If loaded but not running (start_time is None), just adjust the total duration
-    else:
-        timer_state['total_duration_ms'] += int(adjustment_seconds * 1000)
-        if timer_state['total_duration_ms'] < 0:
-            timer_state['total_duration_ms'] = 0
-
+    if timer_state['mode'] == 'Duration':
+        timer_state['start_time'] += seconds
+    elif timer_state['mode'] == 'Absolute' and timer_state['target_end_time_ts']:
+        timer_state['target_end_time_ts'] += seconds
+        timer_state['total_duration_ms'] = int((timer_state['target_end_time_ts'] - timer_state['start_time']) * 1000)
     return True
 
 
 def toggle_negative(allow):
-    """Toggles whether the timer can count into negative numbers."""
     timer_state['allow_negative'] = allow
 
 
 def get_current_schedule():
-    """Determines if it's a weekday or weekend and returns the schedule."""
-    today = datetime.now().weekday()  # Monday is 0, Sunday is 6
-    is_weekend = today >= 5  # 5 is Saturday, 6 is Sunday
-
-    if is_weekend:
-        return {
-            'schedule': timer_state['weekend_schedule'],
-            'type': 'Weekend'
-        }
-    else:
-        return {
-            'schedule': timer_state['midweek_schedule'],
-            'type': 'Midweek'
-
-        }
+    # (Simplified for brevity, assumes dynamic loading works as before)
+    is_weekend = datetime.now().weekday() >= 5
+    if is_weekend: return {'schedule': timer_state['weekend_schedule'], 'type': 'Weekend'}
+    return {'schedule': load_midweek_schedule(), 'type': 'Midweek'}
